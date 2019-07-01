@@ -20,7 +20,7 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import org.graylog2.gelfclient.GelfMessage;
-import org.graylog2.gelfclient.util.LoggingQueue;
+import org.graylog2.gelfclient.util.LogMessageQueue;
 import org.graylog2.gelfclient.util.Uninterruptibles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,7 +52,7 @@ public class GelfSenderThread {
      * @param queue            the {@link java.util.concurrent.ConcurrentLinkedQueue} used as source of {@link GelfMessage}s
      * @param maxInflightSends the maximum number of outstanding network writes/flushes before the sender spins
      */
-    public GelfSenderThread(final LoggingQueue queue, int maxInflightSends) {
+    public GelfSenderThread(final LogMessageQueue queue, int maxInflightSends) {
         this.maxInflightSends = maxInflightSends;
         this.lock = new ReentrantLock();
         this.connectedCond = lock.newCondition();
@@ -85,7 +85,7 @@ public class GelfSenderThread {
 
                 };
 
-                final LoggingQueue.QueueMessageEventListener messageListener = new LoggingQueue.QueueMessageEventListener() {
+                final LogMessageQueue.QueueMessageEventListener messageListener = new LogMessageQueue.QueueMessageEventListener() {
                     @Override
                     public void messageReceived() {
                         semaphore.drainPermits();

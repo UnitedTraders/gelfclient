@@ -21,12 +21,11 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import org.graylog2.gelfclient.GelfConfiguration;
 import org.graylog2.gelfclient.GelfMessage;
-import org.graylog2.gelfclient.util.LoggingQueue;
+import org.graylog2.gelfclient.util.LogMessageQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * An abstract {@link GelfTransport} implementation serving as parent for the concrete implementations.
@@ -36,9 +35,7 @@ public abstract class AbstractGelfTransport implements GelfTransport {
     private static final Logger LOG = LoggerFactory.getLogger(AbstractGelfTransport.class);
 
     protected final GelfConfiguration config;
-    protected final LoggingQueue queue;
-    private AtomicLong queueSize = new AtomicLong(0L); // queue.size() method computes size with linear complexity, so we will use atomic counter instead
-
+    protected final LogMessageQueue queue;
     private final EventLoopGroup workerGroup;
 
     /**
@@ -47,7 +44,7 @@ public abstract class AbstractGelfTransport implements GelfTransport {
      * @param config the client configuration
      * @param queue  the {@link java.util.concurrent.ConcurrentLinkedQueue} used to buffer GELF messages
      */
-    public AbstractGelfTransport(final GelfConfiguration config, final LoggingQueue queue) {
+    public AbstractGelfTransport(final GelfConfiguration config, final LogMessageQueue queue) {
         this.config = config;
         this.queue = queue;
         this.workerGroup = new NioEventLoopGroup(config.getThreads(), new DefaultThreadFactory(getClass(), true));
@@ -60,7 +57,7 @@ public abstract class AbstractGelfTransport implements GelfTransport {
      * @param config the client configuration
      */
     public AbstractGelfTransport(final GelfConfiguration config) {
-        this(config, new LoggingQueue());
+        this(config, new LogMessageQueue());
 
     }
 
@@ -87,9 +84,7 @@ public abstract class AbstractGelfTransport implements GelfTransport {
     @Override
     public void send(final GelfMessage message) throws InterruptedException {
         LOG.trace("Sending message: {}", message);
-        if (queue.add(message)) {
-            queueSize.getAndIncrement();
-        }
+        queue.add(message);
     }
 
     /**
@@ -104,11 +99,7 @@ public abstract class AbstractGelfTransport implements GelfTransport {
     @Override
     public boolean trySend(final GelfMessage message) {
         LOG.trace("Trying to send message: {}", message);
-        boolean added = queueSize.get() < config.getQueueSize() && queue.offer(message);
-        if (added) {
-            queueSize.getAndIncrement();
-        }
-        return added;
+        return queue.size() < config.getQueueSize() && queue.offer(message);
     }
 
     /**
