@@ -33,4 +33,5 @@ public enum GelfMessageVersion {
     public String toString() {
         return versionString;
     }
+
 }

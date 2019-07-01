@@ -31,7 +31,7 @@ import io.netty.handler.ssl.SslContext;
 import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import org.graylog2.gelfclient.GelfConfiguration;
-import org.graylog2.gelfclient.encoder.GelfMessageJsonEncoder;
+import org.graylog2.gelfclient.encoder.GelfMessageDslJsonEncoder;
 import org.graylog2.gelfclient.encoder.GelfTcpFrameDelimiterEncoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -92,8 +92,10 @@ public class GelfTcpTransport extends AbstractGelfTransport {
 
                         // The graylog2-server uses '\0'-bytes as delimiter for TCP frames.
                         ch.pipeline().addLast(new GelfTcpFrameDelimiterEncoder());
+
                         // We cannot use GZIP encoding for TCP because the headers contain '\0'-bytes then.
-                        ch.pipeline().addLast(new GelfMessageJsonEncoder());
+                       // ch.pipeline().addLast(new GelfMessageJsonEncoder(config.isTrackSerializationTime()));
+                        ch.pipeline().addLast(new GelfMessageDslJsonEncoder(config.isTrackSerializationTime())); // use a bit efficient dsl-json encoder
                         ch.pipeline().addLast(new SimpleChannelInboundHandler<ByteBuf>() {
                             @Override
                             protected void channelRead0(ChannelHandlerContext ctx, ByteBuf msg) throws Exception {
@@ -116,6 +118,8 @@ public class GelfTcpTransport extends AbstractGelfTransport {
                             public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
                                 LOG.error("Exception caught", cause);
                             }
+
+
                         });
                     }
                 });

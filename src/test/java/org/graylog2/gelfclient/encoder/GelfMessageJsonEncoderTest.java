@@ -46,7 +46,7 @@ public class GelfMessageJsonEncoderTest {
 
     @BeforeMethod
     public void setup() {
-        channel = new EmbeddedChannel(new GelfMessageJsonEncoder());
+        channel = new EmbeddedChannel(new GelfMessageJsonEncoder(false));
         message = new GelfMessageBuilder("test")
                 .fullMessage("The full message!")
                 .level(GelfMessageLevel.INFO)
@@ -79,7 +79,7 @@ public class GelfMessageJsonEncoderTest {
 
     @Test
     public void testNullValue() throws Exception {
-        channel = new EmbeddedChannel(new GelfMessageJsonEncoder());
+        channel = new EmbeddedChannel(new GelfMessageJsonEncoder(false));
         message = new GelfMessage("test");
         message.addAdditionalField("_null", null);
 
@@ -158,7 +158,7 @@ public class GelfMessageJsonEncoderTest {
 
     @Test
     public void testOptionalFullMessage() throws Exception {
-        final EmbeddedChannel channel = new EmbeddedChannel(new GelfMessageJsonEncoder());
+        final EmbeddedChannel channel = new EmbeddedChannel(new GelfMessageJsonEncoder(false));
         final GelfMessage message = new GelfMessageBuilder("test").build();
         assertTrue(channel.writeOutbound(message));
         assertTrue(channel.finish());
@@ -219,7 +219,7 @@ public class GelfMessageJsonEncoderTest {
 
     @Test
     public void testNullLevel() throws Exception {
-        final EmbeddedChannel channel = new EmbeddedChannel(new GelfMessageJsonEncoder());
+        final EmbeddedChannel channel = new EmbeddedChannel(new GelfMessageJsonEncoder(false));
         final GelfMessage message = new GelfMessageBuilder("test").build();
 
         message.setLevel(null);

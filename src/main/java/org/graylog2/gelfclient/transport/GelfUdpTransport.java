@@ -72,7 +72,7 @@ public class GelfUdpTransport extends AbstractGelfTransport {
                             case NONE:
                             default:
                         }
-                        ch.pipeline().addLast(new GelfMessageJsonEncoder());
+                        ch.pipeline().addLast(new GelfMessageJsonEncoder(config.isTrackSerializationTime()));
                         ch.pipeline().addLast(new SimpleChannelInboundHandler<DatagramPacket>() {
                             @Override
                             protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket msg) throws Exception {

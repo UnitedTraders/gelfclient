@@ -28,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -39,12 +40,14 @@ import java.util.Map;
 public class GelfMessageJsonEncoder extends MessageToMessageEncoder<GelfMessage> {
     private static final Logger LOG = LoggerFactory.getLogger(GelfMessageJsonEncoder.class);
     private final JsonFactory jsonFactory;
+    private boolean serializationTrackingEnabled;
 
     /**
      * Creates a new instance of this channel handler with the default {@link com.fasterxml.jackson.core.JsonFactory}.
      */
-    public GelfMessageJsonEncoder() {
+    public GelfMessageJsonEncoder(boolean serializationTrackingEnabled) {
         this(new JsonFactory());
+        this.serializationTrackingEnabled = serializationTrackingEnabled;
     }
 
     /**
@@ -76,6 +79,23 @@ public class GelfMessageJsonEncoder extends MessageToMessageEncoder<GelfMessage>
     private byte[] toJson(final GelfMessage message) throws Exception {
         final ByteArrayOutputStream out = new ByteArrayOutputStream();
 
+        if (serializationTrackingEnabled) {
+            message.addAdditionalField("_serializationRate", "logs_count=" + SerializationTimeTracker.logsCount.get() + ";time_spent=" + SerializationTimeTracker.timeSpent.get());
+
+            long t1 = System.currentTimeMillis();
+            serialize(message, out);
+            long t2 = System.currentTimeMillis();
+            SerializationTimeTracker.logsCount.getAndIncrement();
+            SerializationTimeTracker.timeSpent.addAndGet((t2 - t1));
+        } else {
+            serialize(message, out);
+        }
+
+        return out.toByteArray();
+    }
+
+    private void serialize(GelfMessage message, ByteArrayOutputStream out) throws IOException {
+
         try (final JsonGenerator jg = jsonFactory.createGenerator(out, JsonEncoding.UTF8)) {
             jg.writeStartObject();
 
@@ -83,9 +103,8 @@ public class GelfMessageJsonEncoder extends MessageToMessageEncoder<GelfMessage>
             jg.writeNumberField("timestamp", message.getTimestamp());
             jg.writeStringField("host", message.getHost());
             jg.writeStringField("short_message", message.getMessage());
-            if (message.getLevel() != null) {
-                jg.writeNumberField("level", message.getLevel().getNumericLevel());
-            }
+            jg.writeNumberField("level", message.getLevel().getNumericLevel());
+
 
             if(null != message.getFullMessage()) {
                 jg.writeStringField("full_message", message.getFullMessage());
@@ -106,7 +125,5 @@ public class GelfMessageJsonEncoder extends MessageToMessageEncoder<GelfMessage>
 
             jg.writeEndObject();
         }
-
-        return out.toByteArray();
     }
 }

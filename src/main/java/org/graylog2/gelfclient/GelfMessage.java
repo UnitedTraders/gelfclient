@@ -16,6 +16,10 @@
 
 package org.graylog2.gelfclient;
 
+import com.dslplatform.json.CompiledJson;
+import com.dslplatform.json.JsonAttribute;
+import org.graylog2.gelfclient.encoder.GelfMessageDslJsonEncoder;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -23,14 +27,25 @@ import java.util.Objects;
 /**
  * A GELF message according to the <a href="http://graylog2.org/gelf#specs">GELF specification</a>
  */
+@CompiledJson(minified = true)
 public class GelfMessage {
+
+    @JsonAttribute(converter = GelfMessageDslJsonEncoder.MessageVersionConverter.class)
     private final GelfMessageVersion version;
     private final String host;
     private final String message;
     private String fullMessage;
     private double timestamp = System.currentTimeMillis() / 1000D;
+
+    @JsonAttribute(converter = GelfMessageDslJsonEncoder.MessageLevelConverter.class)
     private GelfMessageLevel level = GelfMessageLevel.ALERT;
-    private final Map<String, Object> additionalFields = new HashMap<>();
+
+    @JsonAttribute(converter = GelfMessageDslJsonEncoder.AdditionalFieldsConverter.class)
+    private Map<String, Object> additionalFields = new HashMap<>();
+
+    public GelfMessage() {
+        this(""); // for annotation processor only
+    }
 
     public GelfMessage(final String message) {
         this(message, "localhost");
@@ -46,6 +61,7 @@ public class GelfMessage {
         this.version = version;
     }
 
+    @JsonAttribute(converter = GelfMessageDslJsonEncoder.MessageVersionConverter.class)
     public GelfMessageVersion getVersion() {
         return version;
     }
@@ -74,6 +90,7 @@ public class GelfMessage {
         this.timestamp = timestamp;
     }
 
+    @JsonAttribute(converter = GelfMessageDslJsonEncoder.MessageLevelConverter.class)
     public GelfMessageLevel getLevel() {
         return level;
     }
@@ -82,8 +99,13 @@ public class GelfMessage {
         this.level = level;
     }
 
+    @JsonAttribute(converter = GelfMessageDslJsonEncoder.AdditionalFieldsConverter.class)
     public Map<String, Object> getAdditionalFields() {
         return additionalFields;
+    }
+
+    public void setAdditionalFields(Map<String, Object> additionalFields) {
+        this.additionalFields = additionalFields;
     }
 
     public void addAdditionalField(final String key, final Object value) {

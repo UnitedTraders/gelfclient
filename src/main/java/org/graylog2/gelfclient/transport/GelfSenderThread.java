@@ -68,8 +68,19 @@ public class GelfSenderThread {
                 final ChannelFutureListener inflightListener = new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
-                        inflightSends.decrementAndGet();
+                        if (future.isSuccess()) {
+                            //LOG.debug("message sent ");
+                            inflightSends.decrementAndGet();
+                        } else {
+                            Throwable th = future.cause();
+                            if (th != null) {
+                                LOG.error("error sending log to graylog", th);
+                                throw (Exception) th;
+                            }
+                        }
                     }
+
+
                 };
 
                 while (keepRunning.get()) {

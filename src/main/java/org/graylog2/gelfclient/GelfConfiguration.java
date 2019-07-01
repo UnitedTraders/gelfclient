@@ -40,6 +40,7 @@ public class GelfConfiguration {
     private int sendBufferSize = -1;
     private int maxInflightSends = 512;
     private int threads = 0;
+    private boolean trackSerializtionTime = false;
 
     /**
      * Creates a new configuration with the given hostname and port.
@@ -203,6 +204,7 @@ public class GelfConfiguration {
         return this;
     }
 
+
     /**
      * Get the trust certificate chain file for the TLS connection.
      *
@@ -318,6 +320,13 @@ public class GelfConfiguration {
 
     public boolean isTcpKeepAlive() {
         return tcpKeepAlive;
+    }
+
+    public boolean isTrackSerializationTime() { return trackSerializtionTime; }
+
+    public GelfConfiguration trackSerializtionTime(final boolean trackSerializtionTime) {
+        this.trackSerializtionTime = trackSerializtionTime;
+        return this;
     }
 
     public GelfConfiguration tcpKeepAlive(final boolean tcpKeepAlive) {
