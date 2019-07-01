@@ -21,12 +21,12 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import org.graylog2.gelfclient.GelfConfiguration;
 import org.graylog2.gelfclient.GelfMessage;
+import org.graylog2.gelfclient.util.LoggingQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * An abstract {@link GelfTransport} implementation serving as parent for the concrete implementations.
@@ -36,17 +36,18 @@ public abstract class AbstractGelfTransport implements GelfTransport {
     private static final Logger LOG = LoggerFactory.getLogger(AbstractGelfTransport.class);
 
     protected final GelfConfiguration config;
-    protected final BlockingQueue<GelfMessage> queue;
+    protected final LoggingQueue queue;
+    private AtomicLong queueSize = new AtomicLong(0L); // queue.size() method computes size with linear complexity, so we will use atomic counter instead
 
     private final EventLoopGroup workerGroup;
 
     /**
-     * Creates a new GELF transport with the given configuration and {@link java.util.concurrent.BlockingQueue}.
+     * Creates a new GELF transport with the given configuration and queue.
      *
      * @param config the client configuration
-     * @param queue  the {@link BlockingQueue} used to buffer GELF messages
+     * @param queue  the {@link java.util.concurrent.ConcurrentLinkedQueue} used to buffer GELF messages
      */
-    public AbstractGelfTransport(final GelfConfiguration config, final BlockingQueue<GelfMessage> queue) {
+    public AbstractGelfTransport(final GelfConfiguration config, final LoggingQueue queue) {
         this.config = config;
         this.queue = queue;
         this.workerGroup = new NioEventLoopGroup(config.getThreads(), new DefaultThreadFactory(getClass(), true));
@@ -59,7 +60,7 @@ public abstract class AbstractGelfTransport implements GelfTransport {
      * @param config the client configuration
      */
     public AbstractGelfTransport(final GelfConfiguration config) {
-        this(config, new LinkedBlockingQueue<GelfMessage>(config.getQueueSize()));
+        this(config, new LoggingQueue());
 
     }
 
@@ -77,31 +78,37 @@ public abstract class AbstractGelfTransport implements GelfTransport {
 
     /**
      * {@inheritDoc}
-     * <p>This implementation is backed by a {@link java.util.concurrent.BlockingQueue}. When this method returns the
-     * message has been added to the {@link java.util.concurrent.BlockingQueue} but has not been sent to the remote
+     * <p>This implementation is backed by a {@link java.util.concurrent.ConcurrentLinkedQueue}. When this method returns the
+     * message has been added to the {@link java.util.concurrent.ConcurrentLinkedQueue} but has not been sent to the remote
      * host yet.</p>
      *
      * @param message message to send to the remote host
      */
     @Override
     public void send(final GelfMessage message) throws InterruptedException {
-        LOG.debug("Sending message: {}", message);
-        queue.put(message);
+        LOG.trace("Sending message: {}", message);
+        if (queue.add(message)) {
+            queueSize.getAndIncrement();
+        }
     }
 
     /**
      * {@inheritDoc}
-     * <p>This implementation is backed by a {@link java.util.concurrent.BlockingQueue}. When this method returns the
-     * message has been added to the {@link java.util.concurrent.BlockingQueue} but has not been sent to the remote
+     * <p>This implementation is backed by a {@link java.util.concurrent.ConcurrentLinkedQueue}. When this method returns the
+     * message has been added to the {@link java.util.concurrent.ConcurrentLinkedQueue} but has not been sent to the remote
      * host yet.</p>
      *
      * @param message message to send to the remote host
-     * @return true if the message could be dispatched, false otherwise
+     * @return true if the message could be dispatched, false otherwise (or queue is full)
      */
     @Override
     public boolean trySend(final GelfMessage message) {
-        LOG.debug("Trying to send message: {}", message);
-        return queue.offer(message);
+        LOG.trace("Trying to send message: {}", message);
+        boolean added = queueSize.get() < config.getQueueSize() && queue.offer(message);
+        if (added) {
+            queueSize.getAndIncrement();
+        }
+        return added;
     }
 
     /**

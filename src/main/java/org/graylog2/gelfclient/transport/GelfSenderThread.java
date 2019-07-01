@@ -20,18 +20,19 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import org.graylog2.gelfclient.GelfMessage;
+import org.graylog2.gelfclient.util.LoggingQueue;
 import org.graylog2.gelfclient.util.Uninterruptibles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static java.util.concurrent.TimeUnit.MICROSECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 /**
  * The main event thread used by the {@link org.graylog2.gelfclient.transport.GelfTransport}s.
@@ -46,12 +47,12 @@ public class GelfSenderThread {
     private final int maxInflightSends;
 
     /**
-     * Creates a new sender thread with the given {@link BlockingQueue} as source of messages.
+     * Creates a new sender thread with the given {@link java.util.concurrent.ConcurrentLinkedQueue} as source of messages.
      *
-     * @param queue the {@link BlockingQueue} used as source of {@link GelfMessage}s
+     * @param queue            the {@link java.util.concurrent.ConcurrentLinkedQueue} used as source of {@link GelfMessage}s
      * @param maxInflightSends the maximum number of outstanding network writes/flushes before the sender spins
      */
-    public GelfSenderThread(final BlockingQueue<GelfMessage> queue, int maxInflightSends) {
+    public GelfSenderThread(final LoggingQueue queue, int maxInflightSends) {
         this.maxInflightSends = maxInflightSends;
         this.lock = new ReentrantLock();
         this.connectedCond = lock.newCondition();
@@ -65,6 +66,7 @@ public class GelfSenderThread {
             public void run() {
                 GelfMessage gelfMessage = null;
                 final AtomicInteger inflightSends = new AtomicInteger(0);
+                final Semaphore semaphore = new Semaphore(0);
                 final ChannelFutureListener inflightListener = new ChannelFutureListener() {
                     @Override
                     public void operationComplete(ChannelFuture future) throws Exception {
@@ -83,6 +85,15 @@ public class GelfSenderThread {
 
                 };
 
+                final LoggingQueue.QueueMessageEventListener messageListener = new LoggingQueue.QueueMessageEventListener() {
+                    @Override
+                    public void messageReceived() {
+                        semaphore.drainPermits();
+                        semaphore.release();
+                    }
+                };
+                queue.setListener(messageListener);
+
                 while (keepRunning.get()) {
                     // wait until we are connected to the graylog2 server before polling log events from the queue
                     lock.lock();
@@ -97,29 +108,35 @@ public class GelfSenderThread {
                                 }
                             }
                         }
-                        // we are connected, let's start sending logs
                         try {
+                            // we are connected, let's start sending logs
                             // if we have a lingering event already, try to send that instead of polling a new one.
                             if (gelfMessage == null) {
-                                gelfMessage = queue.poll(100, TimeUnit.MILLISECONDS);
-                            }
-                            // if we are still connected, convert LoggingEvent to GELF and send it
-                            // but if we aren't connected anymore, we'll have already pulled an event from the queue,
-                            // which we keep hanging around in this thread and in the next loop iteration will block until we are connected again.
-                            if (gelfMessage != null && channel != null && channel.isActive()) {
-                                // Do not allow more than "maxInflightSends" concurrent writes in netty, to avoid having netty buffer
-                                // excessively when faced with slower consumers
-                                while (inflightSends.get() > GelfSenderThread.this.maxInflightSends) {
-                                    Uninterruptibles.sleepUninterruptibly(1, MICROSECONDS);
+                                if (queue.isEmpty() && semaphore.tryAcquire(10, SECONDS)) {
+                                    // sleep until new GelfMessage come to queue
+                                    gelfMessage = queue.poll();
+                                } else {
+                                    gelfMessage = queue.poll();
                                 }
-                                inflightSends.incrementAndGet();
 
-                                // Write the GELF message to the pipeline. The protocol specific channel handler
-                                // will take care of encoding.
-                                channel.writeAndFlush(gelfMessage).addListener(inflightListener);
-                                gelfMessage = null;
+                                // if we are still connected, convert LoggingEvent to GELF and send it
+                                // but if we aren't connected anymore, we'll have already pulled an event from the queue,
+                                // which we keep hanging around in this thread and in the next loop iteration will block until we are connected again.
+                                if (gelfMessage != null && channel != null && channel.isActive()) {
+                                    // Do not allow more than "maxInflightSends" concurrent writes in netty, to avoid having netty buffer
+                                    // excessively when faced with slower consumers
+                                    while (inflightSends.get() > GelfSenderThread.this.maxInflightSends) {
+                                        Uninterruptibles.sleepUninterruptibly(1, MICROSECONDS);
+                                    }
+                                    inflightSends.incrementAndGet();
+
+                                    // Write the GELF message to the pipeline. The protocol specific channel handler
+                                    // will take care of encoding.
+                                    channel.writeAndFlush(gelfMessage).addListener(inflightListener);
+                                    gelfMessage = null;
+                                }
                             }
-                        } catch (InterruptedException e) {
+                        } catch (InterruptedException ex) {
                             // ignore, when stopping keepRunning will be set to false outside
                         }
                     } finally {
@@ -128,11 +145,13 @@ public class GelfSenderThread {
                 }
 
                 LOG.debug("GelfSenderThread exiting!");
+
             }
         });
 
         this.senderThread.setDaemon(true);
         this.senderThread.setName("GelfSenderThread-" + senderThread.getId());
+
     }
 
     public void start(Channel channel) {

@@ -18,6 +18,7 @@ package gelfclient.play;
 
 import org.graylog2.gelfclient.GelfConfiguration;
 import org.graylog2.gelfclient.GelfMessage;
+import org.graylog2.gelfclient.GelfMessageLevel;
 import org.graylog2.gelfclient.GelfTransports;
 import org.graylog2.gelfclient.transport.GelfTransport;
 
@@ -28,8 +29,15 @@ import java.util.concurrent.TimeUnit;
  */
 public class Play {
     public static void main(String... args) throws InterruptedException {
-        final GelfConfiguration config = new GelfConfiguration()
-                .transport(GelfTransports.UDP)
+
+        System.setProperty(org.slf4j.impl.SimpleLogger.DEFAULT_LOG_LEVEL_KEY, "DEBUG");
+
+        final GelfConfiguration config = new GelfConfiguration("localhost", 12201)
+                .transport(GelfTransports.TCP)
+                .enableTls()
+                //.disableTls()
+                .disableTlsCertVerification()
+                .tcpKeepAlive(true)
                 .queueSize(1024)
                 .reconnectDelay(5000);
 
@@ -37,12 +45,16 @@ public class Play {
 
         int count = 0;
         while (true) {
-            final GelfMessage msg = new GelfMessage("Hello world! " + count + " " + config.getTransport().toString());
+            final GelfMessage msg = new GelfMessage("Hello world!! " + count + " " + config.getTransport().toString());
+            msg.setLevel(GelfMessageLevel.DEBUG);
+            msg.setFullMessage("Full message");
+
             count++;
 
             msg.addAdditionalField("_count", count);
             msg.addAdditionalField("_oink", 1.231);
-            msg.addAdditionalField("_objecttest", new Object());
+            msg.addAdditionalField("_facility", "gelf-netty-client");
+            //msg.addAdditionalField("_objecttest", new Object());
 
             transport.send(msg);
             TimeUnit.SECONDS.sleep(2);

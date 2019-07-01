@@ -32,6 +32,7 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import org.graylog2.gelfclient.GelfConfiguration;
 import org.graylog2.gelfclient.encoder.GelfMessageDslJsonEncoder;
+import org.graylog2.gelfclient.encoder.GelfMessageJsonEncoder;
 import org.graylog2.gelfclient.encoder.GelfTcpFrameDelimiterEncoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
