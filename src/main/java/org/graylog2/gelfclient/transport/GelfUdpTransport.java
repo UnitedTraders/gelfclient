@@ -17,20 +17,11 @@
 package org.graylog2.gelfclient.transport;
 
 import io.netty.bootstrap.Bootstrap;
-import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.*;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import org.graylog2.gelfclient.GelfConfiguration;
-import org.graylog2.gelfclient.encoder.GelfCompressionGzipEncoder;
-import org.graylog2.gelfclient.encoder.GelfCompressionZlibEncoder;
-import org.graylog2.gelfclient.encoder.GelfMessageChunkEncoder;
-import org.graylog2.gelfclient.encoder.GelfMessageJsonEncoder;
-import org.graylog2.gelfclient.encoder.GelfMessageUdpEncoder;
+import org.graylog2.gelfclient.encoder.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -53,7 +44,6 @@ public class GelfUdpTransport extends AbstractGelfTransport {
     @Override
     protected void createBootstrap(final EventLoopGroup workerGroup) {
         final Bootstrap bootstrap = new Bootstrap();
-        final GelfSenderThread senderThread = new GelfSenderThread(queue, config.getMaxInflightSends());
 
         bootstrap.group(workerGroup)
                 .channel(NioDatagramChannel.class)
@@ -72,7 +62,7 @@ public class GelfUdpTransport extends AbstractGelfTransport {
                             case NONE:
                             default:
                         }
-                        ch.pipeline().addLast(new GelfMessageJsonEncoder(config.isTrackSerializationTime()));
+                        ch.pipeline().addLast(new GelfMessageDslJsonEncoder(config.isTrackSerializationTime()));
                         ch.pipeline().addLast(new SimpleChannelInboundHandler<DatagramPacket>() {
                             @Override
                             protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket msg) throws Exception {
@@ -81,12 +71,12 @@ public class GelfUdpTransport extends AbstractGelfTransport {
 
                             @Override
                             public void channelActive(ChannelHandlerContext ctx) throws Exception {
-                                senderThread.start(ctx.channel());
+                                channel = ctx.channel();
                             }
 
                             @Override
                             public void channelInactive(ChannelHandlerContext ctx) throws Exception {
-                                senderThread.stop();
+                                channel = ctx.channel();
                             }
 
                             @Override

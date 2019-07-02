@@ -16,16 +16,25 @@
 
 package org.graylog2.gelfclient.transport;
 
+import io.netty.channel.Channel;
+import io.netty.channel.ChannelFuture;
+import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.util.concurrent.DefaultThreadFactory;
 import org.graylog2.gelfclient.GelfConfiguration;
 import org.graylog2.gelfclient.GelfMessage;
 import org.graylog2.gelfclient.util.LogMessageQueue;
+import org.graylog2.gelfclient.util.Uninterruptibles;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static java.util.concurrent.TimeUnit.MICROSECONDS;
 
 /**
  * An abstract {@link GelfTransport} implementation serving as parent for the concrete implementations.
@@ -35,41 +44,63 @@ public abstract class AbstractGelfTransport implements GelfTransport {
     private static final Logger LOG = LoggerFactory.getLogger(AbstractGelfTransport.class);
 
     protected final GelfConfiguration config;
-    protected final LogMessageQueue queue;
+    private final LogMessageQueue queue;
     private final EventLoopGroup workerGroup;
+
+    protected volatile Channel channel = null;
+    private final ScheduledExecutorService queueProcessor;
+    private final AtomicInteger inflightSends = new AtomicInteger(0);
+    private final ChannelFutureListener inflightListener;
 
     /**
      * Creates a new GELF transport with the given configuration and queue.
      *
      * @param config the client configuration
-     * @param queue  the {@link java.util.concurrent.ConcurrentLinkedQueue} used to buffer GELF messages
      */
-    public AbstractGelfTransport(final GelfConfiguration config, final LogMessageQueue queue) {
+    public AbstractGelfTransport(final GelfConfiguration config) {
         this.config = config;
-        this.queue = queue;
         this.workerGroup = new NioEventLoopGroup(config.getThreads(), new DefaultThreadFactory(getClass(), true));
+        this.queue = new LogMessageQueue();
+        this.queueProcessor = Executors.newSingleThreadScheduledExecutor();
+        this.queueProcessor.scheduleAtFixedRate(this::processQueue, 5, config.getQueueProcessRateInSec(), TimeUnit.SECONDS);
+        this.inflightListener = this::handleChannelCallback;
         createBootstrap(workerGroup);
     }
 
-    /**
-     * Creates a new GELF transport with the given configuration.
-     *
-     * @param config the client configuration
-     */
-    public AbstractGelfTransport(final GelfConfiguration config) {
-        this(config, new LogMessageQueue());
+    private void handleChannelCallback(ChannelFuture future) throws Exception {
+        if (future.isSuccess()) {
+            //LOG.debug("message sent ");
+            inflightSends.decrementAndGet();
+        } else {
+            Throwable th = future.cause();
+            if (th != null) {
+                LOG.error("error sending log to graylog", th);
+                throw (Exception) th;
+            }
+        }
+    }
 
+    private void processQueue() {
+        if (channel == null || !channel.isActive() || queue.isEmpty()) {
+            return;
+        }
+
+        while (inflightSends.get() > config.getMaxInflightSends()) {
+            Uninterruptibles.sleepUninterruptibly(1, MICROSECONDS);
+        }
+
+        while(!queue.isEmpty() && inflightSends.get() < config.getMaxInflightSends()) {
+            inflightSends.incrementAndGet();
+            channel.writeAndFlush(queue.poll()).addListener(inflightListener);
+        }
     }
 
     protected abstract void createBootstrap(final EventLoopGroup workerGroup);
 
-    protected void scheduleReconnect(final EventLoopGroup workerGroup) {
-        workerGroup.schedule(new Runnable() {
-            @Override
-            public void run() {
-                LOG.debug("Starting reconnect!");
-                createBootstrap(workerGroup);
-            }
+    void scheduleReconnect(final EventLoopGroup workerGroup) {
+        workerGroup.schedule(() -> {
+            LOG.debug("Starting reconnect!");
+            createBootstrap(workerGroup);
         }, config.getReconnectDelay(), TimeUnit.MILLISECONDS);
     }
 
@@ -82,8 +113,7 @@ public abstract class AbstractGelfTransport implements GelfTransport {
      * @param message message to send to the remote host
      */
     @Override
-    public void send(final GelfMessage message) throws InterruptedException {
-        LOG.trace("Sending message: {}", message);
+    public void send(GelfMessage message) {
         queue.add(message);
     }
 
@@ -98,8 +128,11 @@ public abstract class AbstractGelfTransport implements GelfTransport {
      */
     @Override
     public boolean trySend(final GelfMessage message) {
-        LOG.trace("Trying to send message: {}", message);
-        return queue.size() < config.getQueueSize() && queue.offer(message);
+        if (queue.size() < config.getQueueSize()) {
+            return queue.add(message);
+        } else {
+            return false;
+        }
     }
 
     /**

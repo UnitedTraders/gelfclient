@@ -18,13 +18,7 @@ package org.graylog2.gelfclient.transport;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInitializer;
-import io.netty.channel.ChannelOption;
-import io.netty.channel.EventLoopGroup;
-import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.channel.*;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import io.netty.handler.ssl.SslContext;
@@ -32,7 +26,6 @@ import io.netty.handler.ssl.SslContextBuilder;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import org.graylog2.gelfclient.GelfConfiguration;
 import org.graylog2.gelfclient.encoder.GelfMessageDslJsonEncoder;
-import org.graylog2.gelfclient.encoder.GelfMessageJsonEncoder;
 import org.graylog2.gelfclient.encoder.GelfTcpFrameDelimiterEncoder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -56,7 +49,6 @@ public class GelfTcpTransport extends AbstractGelfTransport {
     @Override
     protected void createBootstrap(final EventLoopGroup workerGroup) {
         final Bootstrap bootstrap = new Bootstrap();
-        final GelfSenderThread senderThread = new GelfSenderThread(queue, config.getMaxInflightSends());
 
         bootstrap.group(workerGroup)
                 .channel(NioSocketChannel.class)
@@ -105,13 +97,13 @@ public class GelfTcpTransport extends AbstractGelfTransport {
 
                             @Override
                             public void channelActive(ChannelHandlerContext ctx) throws Exception {
-                                senderThread.start(ctx.channel());
+                                channel = ctx.channel();
                             }
 
                             @Override
                             public void channelInactive(ChannelHandlerContext ctx) throws Exception {
                                 LOG.info("Channel disconnected!");
-                                senderThread.stop();
+                                channel = ctx.channel();
                                 scheduleReconnect(ctx.channel().eventLoop());
                             }
 
@@ -129,15 +121,12 @@ public class GelfTcpTransport extends AbstractGelfTransport {
             bootstrap.option(ChannelOption.SO_SNDBUF, config.getSendBufferSize());
         }
 
-        bootstrap.connect().addListener(new ChannelFutureListener() {
-            @Override
-            public void operationComplete(ChannelFuture future) throws Exception {
-                if (future.isSuccess()) {
-                    LOG.debug("Connected!");
-                } else {
-                    LOG.error("Connection failed: {}", future.cause().getMessage());
-                    scheduleReconnect(future.channel().eventLoop());
-                }
+        bootstrap.connect().addListener((ChannelFutureListener) future -> {
+            if (future.isSuccess()) {
+                LOG.debug("Connected!");
+            } else {
+                LOG.error("Connection failed: {}", future.cause().getMessage());
+                scheduleReconnect(future.channel().eventLoop());
             }
         });
     }

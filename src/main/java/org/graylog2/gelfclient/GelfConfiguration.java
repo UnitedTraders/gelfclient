@@ -30,6 +30,7 @@ public class GelfConfiguration {
     private GelfTransports transport = GelfTransports.TCP;
     private Compression compression = Compression.GZIP;
     private int queueSize = 512;
+    private int queueProcessRateInSec = 1;
     private boolean tlsEnabled = false;
     private File tlsTrustCertChainFile = null;
     private boolean tlsCertVerificationEnabled = true;
@@ -416,5 +417,14 @@ public class GelfConfiguration {
     public GelfConfiguration maxInflightSends(int maxInflightSends) {
         this.maxInflightSends = maxInflightSends;
         return this;
+    }
+
+    public GelfConfiguration queueProcessRateInSec(int rate) {
+        this.queueProcessRateInSec = rate;
+        return this;
+    }
+
+    public int getQueueProcessRateInSec() {
+        return queueProcessRateInSec;
     }
 }

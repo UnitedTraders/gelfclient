@@ -50,6 +50,9 @@ public class LogMessageQueue extends ConcurrentLinkedQueue<GelfMessage> {
         return (int) queueSize.get();
     }
 
+    @Override
+    public boolean isEmpty() { return this.size() == 0; }
+
     public void setListener(QueueMessageEventListener listener) {
         this.listener = listener;
     }
