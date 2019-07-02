@@ -20,7 +20,7 @@ thread will pick them up. This is important to keep in mind when it comes to
 message delivery guarantees.
 
 The library uses [Netty v4](http://netty.io/) to handle all network related
-tasks and [Jackson](https://github.com/FasterXML/jackson) for JSON encoding.
+tasks and default [DSL-JSON](https://github.com/ngs-doo/dsl-json) or [Jackson](https://github.com/FasterXML/jackson) for JSON encoding
 
 ## Usage
 
