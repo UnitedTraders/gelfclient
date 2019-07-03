@@ -81,6 +81,7 @@ public abstract class AbstractGelfTransport implements GelfTransport {
     }
 
     private void processQueue() {
+
         if (channel == null || !channel.isActive() || queue.isEmpty()) {
             return;
         }
@@ -90,8 +91,11 @@ public abstract class AbstractGelfTransport implements GelfTransport {
         }
 
         while(!queue.isEmpty() && inflightSends.get() < config.getMaxInflightSends()) {
-            inflightSends.incrementAndGet();
-            channel.writeAndFlush(queue.poll()).addListener(inflightListener);
+            GelfMessage msg = queue.poll();
+            if (msg != null) {
+                inflightSends.incrementAndGet();
+                channel.writeAndFlush(msg).addListener(inflightListener);
+            }
         }
     }
 
