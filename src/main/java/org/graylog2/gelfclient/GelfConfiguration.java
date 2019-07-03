@@ -30,7 +30,7 @@ public class GelfConfiguration {
     private GelfTransports transport = GelfTransports.TCP;
     private Compression compression = Compression.GZIP;
     private int queueSize = 512;
-    private int queueProcessRateInSec = 1;
+    private int queueProcessRateIn = 1000;
     private boolean tlsEnabled = false;
     private File tlsTrustCertChainFile = null;
     private boolean tlsCertVerificationEnabled = true;
@@ -419,12 +419,17 @@ public class GelfConfiguration {
         return this;
     }
 
-    public GelfConfiguration queueProcessRateInSec(int rate) {
-        this.queueProcessRateInSec = rate;
+    /**
+     * how frequent queue should be processed
+     * @param rate in milliseconds
+     * @return
+     */
+    public GelfConfiguration queueProcessRateIn(int rate) {
+        this.queueProcessRateIn = rate;
         return this;
     }
 
-    public int getQueueProcessRateInSec() {
-        return queueProcessRateInSec;
+    public int getQueueProcessRateIn() {
+        return queueProcessRateIn;
     }
 }

@@ -62,7 +62,7 @@ public abstract class AbstractGelfTransport implements GelfTransport {
         this.workerGroup = new NioEventLoopGroup(config.getThreads(), new DefaultThreadFactory(getClass(), true));
         this.queue = new LogMessageQueue();
         this.queueProcessor = Executors.newSingleThreadScheduledExecutor();
-        this.queueProcessor.scheduleAtFixedRate(this::processQueue, 5, config.getQueueProcessRateInSec(), TimeUnit.SECONDS);
+        this.queueProcessor.scheduleAtFixedRate(this::processQueue, 5000, config.getQueueProcessRateIn(), TimeUnit.MILLISECONDS);
         this.inflightListener = this::handleChannelCallback;
         createBootstrap(workerGroup);
     }
@@ -74,7 +74,7 @@ public abstract class AbstractGelfTransport implements GelfTransport {
         } else {
             Throwable th = future.cause();
             if (th != null) {
-                LOG.error("error sending log to graylog", th);
+                // LOG.error("error sending log to graylog", th); might leads to cycle
                 throw (Exception) th;
             }
         }
